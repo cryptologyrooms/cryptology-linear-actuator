@@ -9,29 +9,16 @@
  * Application includes
  */
 
-#include "speed_control.h"
-
-/* Motion system functions */
-static float mm_units_to_steps(float mm_units, float mm_per_step)
-{
-	return mm_units / mm_per_step;
-}
-
-/* Motion system parameters */
-static const float PULLEY_DIAMETER_MM = 19.09;
-static const float STEPS_PER_REV = 200;
-static const float MM_PER_STEP = M_PI * PULLEY_DIAMETER_MM/STEPS_PER_REV;
-
-static const float MAXIMUM_SPEED_MM_PER_S = 1000;
-static const float MAXIMUM_SPEED_STEPS_PER_S = mm_units_to_steps(MAXIMUM_SPEED_MM_PER_S, MM_PER_STEP);
-
-static const int ACCELERATION_MM_PER_S2 = 400;
-static const int ACCELERATION_STEPS_PER_S2 = mm_units_to_steps(ACCELERATION_MM_PER_S2, MM_PER_STEP);
+#include "speed-control.h"
+#include "motion-system.h"
 
 static const int HOMING_STEPS_PER_S = mm_units_to_steps(150, MM_PER_STEP);
 
 static const int MAXIMUM_DISTANCE_MM = 2800;
 static const int MAXIMUM_DISTANCE_STEPS = mm_units_to_steps(MAXIMUM_DISTANCE_MM, MM_PER_STEP);
+
+static const float MAXIMUM_SPEED_MM_PER_S = 1000;
+static const float MAXIMUM_SPEED_STEPS_PER_S = mm_units_to_steps(MAXIMUM_SPEED_MM_PER_S, MM_PER_STEP);
 
 /* A4988 Pins */
 static const int A4988A_DIR = 14;
@@ -160,8 +147,8 @@ static void go_home(AccelStepper& stepper)
 static void setup_for_run(AccelStepper& stepper)
 {
 	stepper.setCurrentPosition(0);
-	stepper.setAcceleration( ACCELERATION_STEPS_PER_S2 );
-	stepper.setMaxSpeed( MAXIMUM_SPEED_MM_PER_S );
+	stepper.setAcceleration( speed_get_motor_accel(true) );
+	stepper.setMaxSpeed( speed_get_maximum_speed() );
 }
 
 static void move_distance(AccelStepper& stepper, long steps)
@@ -189,8 +176,8 @@ void setup()
 
 	Serial.println("Linear Actuator v1");
 	Serial.println();
-	Serial.print("Accel, mm/s2: "); Serial.println(ACCELERATION_MM_PER_S2);
-	Serial.print("Accel, steps/s2: "); Serial.println(ACCELERATION_STEPS_PER_S2);
+	Serial.print("Accel, mm/s2: "); Serial.println( speed_get_motor_accel(false) );
+	Serial.print("Accel, steps/s2: "); Serial.println( speed_get_motor_accel(true) );
 
 	io_setup();
 	
