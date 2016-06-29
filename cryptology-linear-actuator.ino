@@ -3,6 +3,7 @@
  */
 
 #include "AccelStepper.h"
+#include "TaskAction.h"
 
 /*
  * Application includes
@@ -21,24 +22,24 @@ static const float PULLEY_DIAMETER_MM = 19.09;
 static const float STEPS_PER_REV = 200;
 static const float MM_PER_STEP = M_PI * PULLEY_DIAMETER_MM/STEPS_PER_REV;
 
-static const float MAXIMUM_SPEED_MM_PER_S = 100;
+static const float MAXIMUM_SPEED_MM_PER_S = 1000;
 static const float MAXIMUM_SPEED_STEPS_PER_S = mm_units_to_steps(MAXIMUM_SPEED_MM_PER_S, MM_PER_STEP);
 
-static const int ACCELERATION_MM_PER_S2 = 1000;
+static const int ACCELERATION_MM_PER_S2 = 400;
 static const int ACCELERATION_STEPS_PER_S2 = mm_units_to_steps(ACCELERATION_MM_PER_S2, MM_PER_STEP);
 
-static const int HOMING_STEPS_PER_S = mm_units_to_steps(100, MM_PER_STEP);
+static const int HOMING_STEPS_PER_S = mm_units_to_steps(150, MM_PER_STEP);
 
-static const int MAXIMUM_DISTANCE_MM = 6000;
+static const int MAXIMUM_DISTANCE_MM = 2800;
 static const int MAXIMUM_DISTANCE_STEPS = mm_units_to_steps(MAXIMUM_DISTANCE_MM, MM_PER_STEP);
 
 /* A4988 Pins */
-static const int A4988A_DIR = 2;
-static const int A4988A_STEP = 3;
+static const int A4988A_DIR = 14;
+static const int A4988A_STEP = 15;
 static const bool FORWARD_DIRECTION_HIGH = false;
 
 /* Other Pins */
-static const int HOME_PIN = 12;
+static const int HOME_PIN = 6;
 
 #ifdef USE_FAST_IO
 #define STEP_PORT PORTD
@@ -87,16 +88,17 @@ static void step_bck()
 
 static AccelStepper s_stepper(step_fwd, step_bck);
 
+static void print_speed_task_fn()
+{
+	float speed = speed_get_mm_per_s();
 
-/**************
- * TEST PARAMETERS
- **************/
-
-static const int TEST_DISTANCE_MM = 2500;
-
-/**************
- * END TEST PARAMETERS
- **************/
+	Serial.print("Speed ");
+	Serial.print(speed);
+	Serial.print(" mm/s, ");
+	Serial.print(mm_units_to_steps(speed, MM_PER_STEP));
+	Serial.println(" steps/s");
+}
+static TaskAction s_print_speed_task(print_speed_task_fn, 1000, INFINITE_TICKS);
 
 static void io_setup()
 {
@@ -104,15 +106,26 @@ static void io_setup()
 	pinMode(A4988A_DIR, OUTPUT);
 
 	pinMode(HOME_PIN, INPUT_PULLUP);
+
+	speed_setup_io();
 }
 
 static void go_home(AccelStepper& stepper)
 {
+	//static unsigned long t = millis();
+
 	stepper.setCurrentPosition(0);
+	stepper.setMaxSpeed(HOMING_STEPS_PER_S);
 	stepper.setSpeed(-HOMING_STEPS_PER_S);
 
 	while ((digitalRead(HOME_PIN) == HIGH) && (-stepper.currentPosition() < MAXIMUM_DISTANCE_STEPS))
 	{
+		/*if (millis() - t > 1000)
+		{ 
+			t = millis();
+			Serial.println(stepper.currentPosition());
+		}*/
+		
 		stepper.runSpeed();
 	}
 
@@ -120,23 +133,39 @@ static void go_home(AccelStepper& stepper)
 	{
 		Serial.print("Could not find home within ");
 		Serial.print(MAXIMUM_DISTANCE_MM);
-		Serial.print("mm travel");
+		Serial.println("mm travel");
 
 		while(true) {};
 	}
 }
 
-static void setup_for_run(AccelStepper& stepper, float speed_steps_per_s)
+static void setup_for_run(AccelStepper& stepper)
 {
 	stepper.setCurrentPosition(0);
 	stepper.setAcceleration( ACCELERATION_STEPS_PER_S2 );
-	stepper.setMaxSpeed( speed_steps_per_s );
+	stepper.setMaxSpeed( MAXIMUM_SPEED_MM_PER_S );
+}
+
+static void move_distance(long steps)
+{
+	float speed = 0.0;
+
+	s_stepper.move( steps );
+	while(s_stepper.run()) {
+		speed_update();
+		speed = mm_units_to_steps(speed_get_mm_per_s(), MM_PER_STEP);
+		s_stepper.setMaxSpeed(speed);
+		s_print_speed_task.tick();
+	}
+	delay(10);
 }
 
 void setup()
 {
 
-	float speed_mm_per_s = get_speed_mm_per_s();
+	float speed_mm_per_s = speed_get_mm_per_s();
+
+	delay(3000);
 
 	Serial.begin(115200);
 
@@ -156,22 +185,15 @@ void setup()
 	Serial.print("Speed, mm/s: "); Serial.println(speed_mm_per_s);
 	Serial.print("Speed, steps/s: "); Serial.println(mm_units_to_steps(speed_mm_per_s, MM_PER_STEP)); 
 
-	setup_for_run(s_stepper, mm_units_to_steps(speed_mm_per_s, MM_PER_STEP));
+	setup_for_run(s_stepper);
 	
 }
 
 void loop()
 {
-	float steps = mm_units_to_steps(TEST_DISTANCE_MM, MM_PER_STEP);
-	delay(10);
+	Serial.print("Moving forward "); Serial.print(MAXIMUM_DISTANCE_MM); Serial.print("mm ("); Serial.print(MAXIMUM_DISTANCE_STEPS); Serial.println(") steps");
+	move_distance(MAXIMUM_DISTANCE_STEPS);
 
-	Serial.print("Moving forward "); Serial.print(TEST_DISTANCE_MM); Serial.print("mm ("); Serial.print(steps); Serial.println(") steps");
-	s_stepper.move( steps );
-	while(s_stepper.run()) {}
-
-	delay(10);
-
-	Serial.print("Moving backward "); Serial.print(TEST_DISTANCE_MM); Serial.print("mm ("); Serial.print(steps); Serial.println(") steps");
-	s_stepper.move( -steps );
-	while(s_stepper.run()) {}
+	Serial.print("Moving backward "); Serial.print(MAXIMUM_DISTANCE_MM); Serial.print("mm ("); Serial.print(MAXIMUM_DISTANCE_STEPS); Serial.println(") steps");
+	move_distance(-MAXIMUM_DISTANCE_STEPS);
 }
