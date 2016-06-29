@@ -16,7 +16,7 @@ static const int NUMBER_OF_SPEEDS = 6;
 static const int PINS[NUMBER_OF_SPEEDS] = {7, 8, 9, 10, 11, 12};
 static const int MAX_COUNT = 1000;
 
-static const int TEST_SPEED_MM_PER_S = 1500;
+static const int TEST_SPEED_MM_PER_S = 500;
 
 static float SPEEDS_MM_PER_S[NUMBER_OF_SPEEDS] = {
 	100, 150, 200, 250, 300, 350};

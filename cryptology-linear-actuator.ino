@@ -110,26 +110,40 @@ static void io_setup()
 	speed_setup_io();
 }
 
+static inline bool motor_at_home()
+{
+	static int debounce = 0;
+	debounce += digitalRead(HOME_PIN) == LOW ? 1 : -1;
+
+	if (debounce > 100) {debounce = 100;}
+	if (debounce < 0) {debounce = 0;}
+
+	return debounce == 100;
+}
+
+static void move_clear_of_microswitch(AccelStepper& stepper)
+{
+	stepper.setCurrentPosition(0);
+	stepper.moveTo(50);
+	stepper.setSpeed(HOMING_STEPS_PER_S);
+	while(stepper.distanceToGo())
+	{
+		stepper.runSpeedToPosition();
+	}
+}
+
 static void go_home(AccelStepper& stepper)
 {
-	//static unsigned long t = millis();
-
 	stepper.setCurrentPosition(0);
 	stepper.setMaxSpeed(HOMING_STEPS_PER_S);
 	stepper.setSpeed(-HOMING_STEPS_PER_S);
 
-	while ((digitalRead(HOME_PIN) == HIGH) && (-stepper.currentPosition() < MAXIMUM_DISTANCE_STEPS))
+	while (!motor_at_home() && (-stepper.currentPosition() < MAXIMUM_DISTANCE_STEPS))
 	{
-		/*if (millis() - t > 1000)
-		{ 
-			t = millis();
-			Serial.println(stepper.currentPosition());
-		}*/
-		
 		stepper.runSpeed();
 	}
 
-	if (digitalRead(HOME_PIN) == HIGH)
+	if (!motor_at_home())
 	{
 		Serial.print("Could not find home within ");
 		Serial.print(MAXIMUM_DISTANCE_MM);
@@ -137,6 +151,10 @@ static void go_home(AccelStepper& stepper)
 
 		while(true) {};
 	}
+
+	delay(100);
+
+	move_clear_of_microswitch(stepper);
 }
 
 static void setup_for_run(AccelStepper& stepper)
@@ -146,15 +164,15 @@ static void setup_for_run(AccelStepper& stepper)
 	stepper.setMaxSpeed( MAXIMUM_SPEED_MM_PER_S );
 }
 
-static void move_distance(long steps)
+static void move_distance(AccelStepper& stepper, long steps)
 {
 	float speed = 0.0;
 
-	s_stepper.move( steps );
-	while(s_stepper.run()) {
+	stepper.move( steps );
+	while(stepper.run()) {
 		speed_update();
 		speed = mm_units_to_steps(speed_get_mm_per_s(), MM_PER_STEP);
-		s_stepper.setMaxSpeed(speed);
+		stepper.setMaxSpeed(speed);
 		s_print_speed_task.tick();
 	}
 	delay(10);
@@ -186,14 +204,14 @@ void setup()
 	Serial.print("Speed, steps/s: "); Serial.println(mm_units_to_steps(speed_mm_per_s, MM_PER_STEP)); 
 
 	setup_for_run(s_stepper);
-	
+
 }
 
 void loop()
 {
 	Serial.print("Moving forward "); Serial.print(MAXIMUM_DISTANCE_MM); Serial.print("mm ("); Serial.print(MAXIMUM_DISTANCE_STEPS); Serial.println(") steps");
-	move_distance(MAXIMUM_DISTANCE_STEPS);
+	move_distance(s_stepper, MAXIMUM_DISTANCE_STEPS);
 
 	Serial.print("Moving backward "); Serial.print(MAXIMUM_DISTANCE_MM); Serial.print("mm ("); Serial.print(MAXIMUM_DISTANCE_STEPS); Serial.println(") steps");
-	move_distance(-MAXIMUM_DISTANCE_STEPS);
+	move_distance(s_stepper, -MAXIMUM_DISTANCE_STEPS);
 }
